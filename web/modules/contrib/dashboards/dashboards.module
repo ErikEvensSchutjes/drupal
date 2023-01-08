@@ -1,0 +1,113 @@
+<?php
+
+/**
+ * @file
+ * Contains dashboards.module.
+ */
+
+use Drupal\Core\Url;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\dashboards\Form\FormAlter;
+use Drupal\dashboards\Plugin\SectionStorage\DashboardSectionStorage;
+use Drupal\dashboards\Plugin\SectionStorage\UserDashboardSectionStorage;
+
+/**
+ * Implements hook_help().
+ */
+function dashboards_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+
+    case 'help.page.dashboards':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('Place dashboards with layout builder functionality.') . '</p>';
+      $output .= '<p>';
+      $output .= t('Visit the <a href=":project_link">Dashboards project page</a> on Drupal.org for more information.', [
+        ':project_link' => 'https://www.drupal.org/project/dashboards',
+      ]);
+      $output .= '</p>';
+
+      return $output;
+
+    default:
+  }
+}
+
+/**
+ * Implements hook_toolbar().
+ */
+function dashboards_toolbar() {
+  $items['dashboards'] = [
+    '#cache' => [
+      'tags' => [
+        'config:dashboard_list',
+      ],
+      'contexts' => [
+        'user.permissions',
+      ],
+    ],
+  ];
+
+  $entityTypeManager = \Drupal::entityTypeManager();
+
+  /**
+   * @var \Drupal\dashboards\Entity\DashboardStorage
+   */
+  $storage = $entityTypeManager->getStorage('dashboard');
+  $boards = $storage->loadMultipleOrderedByWeight();
+  foreach ($boards as $key => $board) {
+    if (!$board->access('view', \Drupal::currentUser())) {
+      unset($boards[$key]);
+    }
+  }
+  if (count($boards) == 0) {
+    return $items;
+  }
+  $boards = array_values($boards);
+  $links = [];
+  foreach ($boards as $board) {
+    $link = $board->toLink($board->label())->toRenderable();
+    $links[] = $link;
+  }
+
+  $items['dashboards'] += [
+    '#type' => 'toolbar_item',
+    'tab' => [
+      '#type' => 'link',
+      '#title' => t('Dashboards'),
+      '#url' => Url::fromRoute('<current>'),
+      '#attributes' => [
+        'class' => ['toolbar-icon', 'toolbar-menu-administration-dashboard'],
+      ],
+    ],
+    'tray' => [
+      '#heading' => t('Dashboards'),
+      'dashboards' => [
+        '#theme' => 'item_list',
+        '#list_type' => 'ul',
+        '#attributes' => [
+          'class' => ['toolbar-menu'],
+        ],
+        '#items' => $links,
+      ],
+    ],
+    '#weight' => 150,
+    '#attached' => [
+      'library' => ['dashboards/core'],
+    ],
+  ];
+
+  return $items;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter() for the entity view display edit form.
+ */
+function dashboards_form_dashboard_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  if (!\Drupal::service('module_handler')->moduleExists('layout_builder_restrictions')) {
+    return;
+  }
+  \Drupal::classResolver(FormAlter::class)->alterEntityViewDisplayFormAllowedBlockCategories($form, $form_state, $form_id);
+  \Drupal::classResolver(FormAlter::class)->alterEntityViewDisplayForm($form, $form_state, $form_id);
+}
